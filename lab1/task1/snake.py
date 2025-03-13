@@ -1,80 +1,195 @@
-from searching_framework import Problem, breadth_first_graph_search
+from enum import Enum
+
+from searching_framework import *
+
+class Direction(Enum):
+    UP = 0
+    RIGHT = 1
+    DOWN = 2
+    LEFT = 3
+
+class Moves(Enum):
+    MOVE_RIGHT = (1, 0)
+    MOVE_LEFT = (-1, 0)
+    MOVE_UP = (0, 1)
+    MOVE_DOWN = (0, -1)
+
+
+def is_valid_move(state, red_coordinates):
+    head = state[0][-1]
+    if head in state[0][:-1]: return False
+    if head in red_coordinates: return False
+    return 0 <= head[0] < 10 and 0 <= head[1] < 10
+
+# state = ( {site koordinati na zmijata}, {direction} , {koordinati na zeleni jabuki}
+def move_left(state, red_coordinates):
+    snake_body = list(state[0])
+    snake_head = state[0][-1]
+    green_coordinates = list(state[-1])
+    offset, new_dir = None, None
+
+    if state[1] == Direction.DOWN.value:
+        new_dir = Direction.RIGHT.value
+        offset = Moves.MOVE_RIGHT.value
+
+    elif state[1] == Direction.UP.value:
+        new_dir = Direction.LEFT.value
+        offset = Moves.MOVE_LEFT.value
+
+    elif state[1] == Direction.RIGHT.value:
+        new_dir = Direction.UP.value
+        offset = Moves.MOVE_UP.value
+
+    elif state[1] == Direction.LEFT.value:
+        new_dir = Direction.DOWN.value
+        offset = Moves.MOVE_DOWN.value
+
+    new_head = tuple(a + b for a, b in zip(snake_head, offset))
+
+    if new_head in green_coordinates:
+        green_coordinates.remove(new_head)
+    else:
+        snake_body = snake_body[1:]
+    snake_body.append(new_head)
+    new_state = (tuple(snake_body), new_dir, tuple(green_coordinates))
+    return new_state
+
+
+def keep_straight(state, red_coordinates):
+    snake_body = list(state[0])
+    snake_head = state[0][-1]
+    green_coordinates = list(state[-1])
+
+    current_dir = state[1]
+
+    offset_map = {
+        Direction.UP.value: Moves.MOVE_UP.value,
+        Direction.RIGHT.value: Moves.MOVE_RIGHT.value,
+        Direction.DOWN.value: Moves.MOVE_DOWN.value,
+        Direction.LEFT.value: Moves.MOVE_LEFT.value
+    }
+
+    offset = offset_map[current_dir]
+    new_head = tuple(a + b for a, b in zip(snake_head, offset))
+
+    # ako ne se griznala ima 2 opcii, novo pole e jabolko, i novo pole ne e jabolko
+    if new_head in green_coordinates:
+        green_coordinates.remove(new_head)
+    else:
+        snake_body = snake_body[1:]
+    snake_body.append(new_head)
+    new_state = (tuple(snake_body), current_dir, tuple(green_coordinates))
+    return new_state
+
+def move_right(state, red_coordinates):
+    snake_body = list(state[0])
+    snake_head = state[0][-1]
+    green_coordinates = list(state[-1])
+    offset, new_dir = None, None
+
+    if state[1] == Direction.DOWN.value:
+        new_dir = Direction.LEFT.value
+        offset = Moves.MOVE_LEFT.value
+
+    elif state[1] == Direction.UP.value:
+        new_dir = Direction.RIGHT.value
+        offset = Moves.MOVE_RIGHT.value
+
+    elif state[1] == Direction.RIGHT.value:
+        new_dir = Direction.DOWN.value
+        offset = Moves.MOVE_DOWN.value
+
+    elif state[1] == Direction.LEFT.value:
+        new_dir = Direction.UP.value
+        offset = Moves.MOVE_UP.value
+
+    new_head = tuple(a + b for a, b in zip(snake_head, offset))
+    if new_head in green_coordinates:
+        green_coordinates.remove(new_head)
+    else:
+        snake_body = snake_body[1:]
+    snake_body.append(new_head)
+    new_state = (tuple(snake_body), new_dir, tuple(green_coordinates))
+    return new_state
 
 
 class SnakeProblem(Problem):
-    def __init__(self, initial, goal=None, grid_size=10):
+    def __init__(self, initial, red_coordinates, goal=None):
         super().__init__(initial, goal)
-        self.grid_size = grid_size
+        self.red_coordinates = red_coordinates
 
     def successor(self, state):
+        """За дадена состојба, врати речник од парови {акција : состојба}
+        достапни од оваа состојба. Ако има многу следбеници, употребете
+        итератор кој би ги генерирал следбениците еден по еден, наместо да
+        ги генерирате сите одеднаш.
+
+        :param state: дадена состојба
+        :return:  речник од парови {акција : состојба} достапни од оваа
+                  состојба
+        :rtype: dict
+        """
         successors = {}
-        head, direction, body, green_apples = state
+        straight = keep_straight(state, self.red_coordinates)
+        left = move_left(state, self.red_coordinates)
+        right = move_right(state, self.red_coordinates)
+        func_names = ["ProdolzhiPravo", "SvrtiLevo", "SvrtiDesno"]
 
-        # Define movement vectors for (right, down, left, up)
-        directions = [(1, 0), (0, 1), (-1, 0), (0, -1)]  # Right, Down, Left, Up
+        for move, func_name in zip([straight, left, right], func_names):
+            if is_valid_move(move, red_coordinates):
+                successors[func_name] = move
 
-        # Define possible moves (continue moving in the current direction, turn right, turn left)
-        possible_moves = [
-            ("ProdolzhiPravo", direction),  # Continue moving in the current direction
-            ("SvrtiDesno", (direction + 1) % 4),  # Turn right
-            ("SvrtiLevo", (direction - 1) % 4)  # Turn left
-        ]
-
-        for action, new_direction in possible_moves:
-            dx, dy = directions[new_direction]  # Get direction change based on new_direction
-            new_head = (head[0] + dx, head[1] + dy)  # Calculate the new head position
-
-            # Check if the new position is within bounds and not colliding with the body
-            if 0 <= new_head[0] < self.grid_size and 0 <= new_head[1] < self.grid_size:
-                if new_head not in body:  # Check if the snake collides with its body
-                    # If the snake eats an apple, it doesn't lose its tail
-                    if new_head in green_apples:
-                        new_body = [new_head] + list(body)  # Grow the snake
-                        new_green_apples = tuple(a for a in green_apples if a != new_head)  # Remove the eaten apple
-                    else:
-                        new_body = [new_head] + list(body[:-1])  # Regular move, tail is removed
-                        new_green_apples = green_apples
-
-                    # Store the successor state
-                    successors[action] = (new_head, new_direction, tuple(new_body), new_green_apples)
-
-        # If no valid actions, return an empty dictionary (indicating no moves)
-        return successors if successors else {}
+        return successors
 
     def actions(self, state):
-        valid_actions = list(self.successor(state).keys())
+        """За дадена состојба state, врати листа од сите акции што може да
+        се применат над таа состојба
 
-        # If there are no valid actions, return an empty list
-        return valid_actions if valid_actions else []
+        :param state: дадена состојба
+        :return: листа на акции
+        :rtype: list
+        """
+        return self.successor(state).keys()
 
     def result(self, state, action):
-        # Safely get the resulting state for the given action
-        successors = self.successor(state)
-        if action in successors:
-            return successors[action]
-        return state  # Return the same state if action is invalid (should not happen)
+        """За дадена состојба state и акција action, врати ја состојбата
+        што се добива со примена на акцијата над состојбата
+
+        :param state: дадена состојба
+        :param action: дадена акција
+        :return: резултантна состојба
+        """
+        return self.successor(state)[action]
 
     def goal_test(self, state):
-        return len(state[3]) == 0  # Goal: No green apples left
+        """Врати True ако state е целна состојба. Даденава имплементација
+        на методот директно ја споредува state со self.goal, како што е
+        специфицирана во конструкторот. Имплементирајте го овој метод ако
+        проверката со една целна состојба self.goal не е доволна.
 
+        :param state: дадена состојба
+        :return: дали дадената состојба е целна состојба
+        :rtype: bool
+        """
+        return len(state[-1]) == 0
 
 if __name__ == '__main__':
-    # Read input
-    N = int(input())  # Number of green apples
-    green_apples = tuple(tuple(map(int, input().split(','))) for _ in range(N))
-    M = int(input())  # Number of red apples (though they're not used in the logic)
-    red_apples = set(tuple(map(int, input().split(','))) for _ in range(M))
+    # print("Read the input, create an instance of your problem class and use the searching algorithms here")
+    green_coordinates = []
+    red_coordinates = []
+    num_green = int(input())
+    for _ in range (num_green):
+        input_ = [int(num) for num in input().split(",")]
+        green_coordinates.append(tuple(input_))
+    num_red = int(input())
+    for _ in range (num_red):
+        input_ = [int(num) for num in input().split(",")]
+        red_coordinates.append(tuple(input_))
 
-    # Initial state (head, direction, body, green apples)
-    # The snake starts at (0, 0), (0, 1), (0, 2) and moves to the right (direction = 0)
-    initial_state = ((0, 2), 0, ((0, 1), (0, 0)), green_apples)
-
-    # Create problem instance
-    problem = SnakeProblem(initial_state, goal=())
-
-    # Solve the problem using breadth-first search
-    solution = breadth_first_graph_search(problem)
-
-    # Print the solution (sequence of actions)
-    if solution:
+    snake_body = ((0,9), (0,8), (0,7))
+    initial_state = (snake_body, Direction.DOWN.value, tuple(green_coordinates))
+    # state = ( {site koordinati na zmijata}, {direction} , {koordinati na zeleni jabuki}
+    s = SnakeProblem(initial_state, red_coordinates)
+    solution = breadth_first_graph_search(s)
+    if solution is not None:
         print(solution.solution())
